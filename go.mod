@@ -22,7 +22,7 @@ require (
 	github.com/datawire/ambassador v1.6.0
 	github.com/denverdino/aliyungo v0.0.0-20190125010748-a747050bb1ba
 	github.com/digitalocean/godo v1.36.0
-	github.com/dnsimple/dnsimple-go v0.60.0
+	github.com/dnsimple/dnsimple-go v0.71.0
 	github.com/exoscale/egoscale v0.73.2
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/ffledgling/pdns-go v0.0.0-20180219074714-524e7daccd99
