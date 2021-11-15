@@ -92,18 +92,29 @@ func (s *AWSSDClientStub) GetService(input *sd.GetServiceInput) (*sd.GetServiceO
 	return nil, errors.New("service not found")
 }
 
-func (s *AWSSDClientStub) ListInstancesPages(input *sd.ListInstancesInput, fn func(*sd.ListInstancesOutput, bool) bool) error {
-	instances := make([]*sd.InstanceSummary, 0)
+func (s *AWSSDClientStub) DiscoverInstances(input *sd.DiscoverInstancesInput) (*sd.DiscoverInstancesOutput, error) {
+	instances := make([]*sd.HttpInstanceSummary, 0)
 
-	for _, inst := range s.instances[*input.ServiceId] {
-		instances = append(instances, instanceToInstanceSummary(inst))
+	for _, ns := range s.namespaces {
+		if ns.Name == input.NamespaceName {
+			for _, srv := range s.services[*ns.Id] {
+				if srv.Name == input.ServiceName {
+					for _, inst := range s.instances[*srv.Id] {
+						instances = append(instances, instanceToHttpInstanceSummary(inst))
+					}
+				}
+			}
+		}
+	}
+	if len(instances) == 0 {
+		return nil, errors.New("instances not found")
 	}
 
-	fn(&sd.ListInstancesOutput{
+	result := &sd.DiscoverInstancesOutput{
 		Instances: instances,
-	}, true)
+	}
 
-	return nil
+	return result, nil
 }
 
 func (s *AWSSDClientStub) ListNamespacesPages(input *sd.ListNamespacesInput, fn func(*sd.ListNamespacesOutput, bool) bool) error {
@@ -413,18 +424,21 @@ func TestAWSSDProvider_ListServicesByNamespace(t *testing.T) {
 	services := map[string]map[string]*sd.Service{
 		"private": {
 			"srv1": {
-				Id:   aws.String("srv1"),
-				Name: aws.String("service1"),
+				Id:          aws.String("srv1"),
+				Name:        aws.String("service1"),
+				NamespaceId: aws.String("private"),
 			},
 			"srv2": {
-				Id:   aws.String("srv2"),
-				Name: aws.String("service2"),
+				Id:          aws.String("srv2"),
+				Name:        aws.String("service2"),
+				NamespaceId: aws.String("private"),
 			},
 		},
 		"public": {
 			"srv3": {
-				Id:   aws.String("srv3"),
-				Name: aws.String("service3"),
+				Id:          aws.String("srv3"),
+				Name:        aws.String("service3"),
+				NamespaceId: aws.String("public"),
 			},
 		},
 	}
@@ -443,14 +457,11 @@ func TestAWSSDProvider_ListServicesByNamespace(t *testing.T) {
 
 		result, err := provider.ListServicesByNamespaceID(namespaces["private"].Id)
 		require.NoError(t, err)
-
-		if !reflect.DeepEqual(result, tc.expectedServices) {
-			t.Errorf("AWSSDProvider.ListServicesByNamespaceID() error = %v, wantErr %v", result, tc.expectedServices)
-		}
+		assert.Equal(t, tc.expectedServices, result)
 	}
 }
 
-func TestAWSSDProvider_ListInstancesByService(t *testing.T) {
+func TestAWSSDProvider_DiscoverInstancesByService(t *testing.T) {
 	namespaces := map[string]*sd.Namespace{
 		"private": {
 			Id:   aws.String("private"),
@@ -497,18 +508,18 @@ func TestAWSSDProvider_ListInstancesByService(t *testing.T) {
 
 	provider := newTestAWSSDProvider(api, endpoint.NewDomainFilter([]string{}), "")
 
-	result, err := provider.ListInstancesByServiceID(services["private"]["srv1"].Id)
+	result, err := provider.DiscoverInstancesByServiceName(namespaces["private"].Name, services["private"]["srv1"].Name)
 	require.NoError(t, err)
 
-	expectedInstances := []*sd.InstanceSummary{instanceToInstanceSummary(instances["srv1"]["inst1"]), instanceToInstanceSummary(instances["srv1"]["inst2"])}
+	expectedInstances := []*sd.HttpInstanceSummary{instanceToHttpInstanceSummary(instances["srv1"]["inst1"]), instanceToHttpInstanceSummary(instances["srv1"]["inst2"])}
 
-	expectedMap := make(map[string]*sd.InstanceSummary)
-	resultMap := make(map[string]*sd.InstanceSummary)
+	expectedMap := make(map[string]*sd.HttpInstanceSummary)
+	resultMap := make(map[string]*sd.HttpInstanceSummary)
 	for _, inst := range expectedInstances {
-		expectedMap[*inst.Id] = inst
+		expectedMap[*inst.InstanceId] = inst
 	}
 	for _, inst := range result {
-		resultMap[*inst.Id] = inst
+		resultMap[*inst.InstanceId] = inst
 	}
 
 	if !reflect.DeepEqual(resultMap, expectedMap) {
